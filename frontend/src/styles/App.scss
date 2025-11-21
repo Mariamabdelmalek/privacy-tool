@@ -1,11 +1,14 @@
+/* src\styles\App.scss */
 @import './_variables';
 
 /* Your body, button, and other styles */
 body {
-  font-family: Arial, sans-serif;
-  background-color: $light-gray;
+  background-image: url('../assets/background.jpg');
+  background-repeat: no-repeat;
+  background-position: center top;
+  background-size: 55%;
+  background-color: #009688;
 }
-
 button {
   background-color: $secondary-color;
   color: white;
@@ -76,4 +79,139 @@ button:hover {
 }
 .App-logo {
   animation: App-logo-spin infinite 20s linear;
+}
+.navbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: $secondary-color;
+  height: 40px;  
+  padding: 10px 20px;
+  color: white;
+
+  a {
+    margin-right: 15px;
+    color: white;
+    text-decoration: none;
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+
+  button {
+    background-color: white;
+    color: $secondary-color;
+    border: none;
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+}
+/* src/styles/App.scss */
+
+.navbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 24px;
+  background-color: #1e5cec;
+  color: white;
+}
+
+.nav-left {
+  display: flex;
+  align-items: center;
+}
+
+.nav-logo {
+  height: 40px;
+  margin-right: 12px;
+}
+
+.nav-links a {
+  margin-right: 20px;
+  color: white;
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.nav-links a:hover {
+  text-decoration: underline;
+}
+
+.nav-links button {
+  background: white;
+  color: #1e5cec;
+  border: none;
+  padding: 8px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.nav-links button:hover {
+  background: #dfe6ff;
+}
+
+
+body {
+  margin: 0 ;
+  padding: 0;
+  background-image: url("../assets/background.jpg");
+  background-size:contain;        
+  background-repeat: no-repeat;
+  background-position: center ; ;
+  background-attachment: fixed;  // nice parallax effect
+  font-family: Arial, sans-serif;
+}
+/* Full-page wrapper */
+.login-wrapper {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  background: url('../assets/background.jpg') no-repeat center center;
+  background-size: cover;
+}
+
+/* Login form container */
+.login-container {
+  background-color: rgba(255, 255, 255, 0.85); // semi-transparent white
+  padding: 2rem;
+  border-radius: 10px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+  max-width: 400px;
+  width: 90%;
+  text-align: center;
+}
+
+/* Form groups */
+.form-group {
+  margin-bottom: 1rem;
+
+  label {
+    display: block;
+    margin-bottom: 0.5rem;
+  }
+
+  input {
+    width: 100%;
+    padding: 0.5rem;
+    border-radius: 5px;
+    border: 1px solid #ccc;
+  }
+}
+
+/* Error message */
+.error {
+  color: red;
+  margin-top: 0.5rem;
+}
+
+/* Toggle button */
+.toggle-btn {
+  background: none;
+  border: none;
+  color: blue;
+  cursor: pointer;
+  text-decoration: underline;
 }

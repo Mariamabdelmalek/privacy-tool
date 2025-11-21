@@ -1,3 +1,4 @@
+// src\Scan.js
 import React, { useState } from "react";
 import { logout } from "./services/authService"; 
 import './styles/App.scss';

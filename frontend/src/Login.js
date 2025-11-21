@@ -1,3 +1,4 @@
+// src/Login.js
 import React, { useState } from "react";
 import { login, createAccount } from "./services/authService";
 import './styles/App.scss';
@@ -14,14 +15,14 @@ export default function Login({ onLogin }) {
     setLoading(true);
     setError("");
 
-     try {
+    try {
       if (isRegister) {
         await createAccount(username, password);
         alert("Account created! You can now log in.");
         setIsRegister(false);
       } else {
         const user = await login(username, password);
-        localStorage.setItem("token", `fake-token-${user.username}`); // mimic login token
+        localStorage.setItem("token", `fake-token-${user.username}`);
         onLogin();
       }
     } catch (err) {
@@ -32,42 +33,44 @@ export default function Login({ onLogin }) {
   };
 
   return (
-    <div style={{ padding: 30, textAlign: "center" }}>
-      <h2>{isRegister ? "Create Account" : "Login"}</h2>
-      <form onSubmit={handleSubmit} style={{ display: "inline-block", textAlign: "left" }}>
-        <div style={{ marginBottom: 10 }}>
-          <label>Username:</label>
-          <input
-            type="text"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            required
-          />
-        </div>
+    <div className="login-wrapper">
+      <div className="login-container">
+        <h2>{isRegister ? "Create Account" : "Login"}</h2>
+        <form onSubmit={handleSubmit}>
+          <div className="form-group">
+            <label>Username:</label>
+            <input
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              required
+            />
+          </div>
 
-        <div style={{ marginBottom: 10 }}>
-          <label>Password:</label>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-          />
-        </div>
+          <div className="form-group">
+            <label>Password:</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+            />
+          </div>
 
-        <button type="submit" disabled={loading}>
-          {loading ? "Processing..." : isRegister ? "Sign Up" : "Login"}
-        </button>
+          <button type="submit" disabled={loading}>
+            {loading ? "Processing..." : isRegister ? "Sign Up" : "Login"}
+          </button>
 
-        {error && <p style={{ color: "red" }}>{error}</p>}
-      </form>
+          {error && <p className="error">{error}</p>}
+        </form>
 
-      <p>
-        {isRegister ? "Already have an account?" : "Need an account?"}{" "}
-        <button onClick={() => setIsRegister(!isRegister)}>
-          {isRegister ? "Login" : "Register"}
-        </button>
-      </p>
+        <p>
+          {isRegister ? "Already have an account?" : "Need an account?"}{" "}
+          <button onClick={() => setIsRegister(!isRegister)} className="toggle-btn">
+            {isRegister ? "Login" : "Register"}
+          </button>
+        </p>
+      </div>
     </div>
   );
 }
