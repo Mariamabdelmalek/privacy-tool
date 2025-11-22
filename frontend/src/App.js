@@ -1,13 +1,19 @@
 // src/App.js
-import React, { useState } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
+import React, { useState } from "react";
+import {
+  BrowserRouter as Router,
+  Routes,
+  Route,
+  Navigate,
+} from "react-router-dom";
 
-import Scan from './Scan';
-import Login from './Login';
-import Navbar from './components/Navbar';
+import Navbar from "./components/Navbar";
+import Login from "./Login";
+import Scan from "./Scan";
+import Dashboard from "./pages/Dashboard";
+import Report from "./pages/Report";
 
-
-import './styles/App.scss';
+import "./styles/App.scss";
 
 function App() {
   const [loggedIn, setLoggedIn] = useState(!!localStorage.getItem("token"));
@@ -24,23 +30,22 @@ function App() {
       <Routes>
         {!loggedIn ? (
           <>
-            <Route 
-              path="/login" 
-              element={<Login onLogin={() => setLoggedIn(true)} />} 
+            {/* Login routes */}
+            <Route
+              path="/login"
+              element={<Login onLogin={() => setLoggedIn(true)} />}
             />
-            <Route 
-              path="*" 
-              element={<Navigate to="/login" />} 
-            />
+            <Route path="*" element={<Navigate to="/login" />} />
           </>
         ) : (
           <>
-          
+            {/* Protected routes */}
             <Route path="/scan" element={<Scan />} />
-            
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/report" element={<Report />} />
 
-            {/* If logged in but URL not found → go to dashboard */}
-            <Route path="*" element={<Navigate to="/" />} />
+            {/* Default redirect when logged in */}
+            <Route path="*" element={<Navigate to="/dashboard" />} />
           </>
         )}
       </Routes>
