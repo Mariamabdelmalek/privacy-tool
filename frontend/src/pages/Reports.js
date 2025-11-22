@@ -1,22 +1,23 @@
+// src/Reports.js
 import React, { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import jsPDF from "jspdf";
+import "jspdf-autotable";
 
-export default function Report() {
+export default function Reports() {
     const { state } = useLocation(); // may contain { report } from Dashboard navigate()
     const navigate = useNavigate();
 
-    // null means "no data yet"
     const [report, setReport] = useState(state?.report ?? null);
     const [loading, setLoading] = useState(!state?.report);
     const [err, setErr] = useState("");
 
-    const base = import.meta?.env?.VITE_API_URL ? import.meta.env.VITE_API_URL : "";
+    const base = import.meta?.env?.VITE_API_URL ?? "";
 
-    // Try to fetch the most recent report ONLY if one wasn't passed in.
+    // Fetch latest report if not passed via state
     useEffect(() => {
         if (report) return;
         const candidates = [`${base}/api/report/latest`, `${base}/api/report`];
-
         (async () => {
             for (const url of candidates) {
                 try {
@@ -35,12 +36,49 @@ export default function Report() {
 
     const hasFindings = !!(report?.findings && report.findings.length > 0);
 
+    const downloadPDF = () => {
+        if (!report) return;
+        const doc = new jsPDF();
+
+        doc.setFontSize(18);
+        doc.text("Social Media Privacy Report", 14, 20);
+
+        doc.setFontSize(12);
+        doc.text(`Scope: ${report.scope ?? "Uploaded file"}`, 14, 30);
+        doc.text(
+            `Generated: ${report.generatedAt ? new Date(report.generatedAt).toLocaleString() : "N/A"}`,
+            14,
+            40
+        );
+        doc.text(`Total Findings: ${report.totalFindings ?? 0}`, 14, 50);
+
+        if (hasFindings) {
+            const tableRows = report.findings.map((f, i) => [
+                i + 1,
+                f.platform,
+                f.riskLevel,
+                f.category,
+                f.snippet,
+                f.recommendation,
+            ]);
+
+            doc.autoTable({
+                startY: 60,
+                head: [["#", "Platform", "Risk", "Type", "Snippet", "Recommendation"]],
+                body: tableRows,
+                headStyles: { fillColor: [52, 73, 94] },
+                styles: { fontSize: 9, cellWidth: "wrap" },
+            });
+        }
+
+        doc.save(`privacy-report-${Date.now()}.pdf`);
+    };
+
     return (
         <main style={styles.page}>
             <h1 style={styles.title}>Detailed Privacy Report</h1>
             {err && <div style={styles.note}>Note: {err}</div>}
 
-            {/* If no report yet, show creative empty state */}
             {!loading && !report && (
                 <section style={styles.emptyWrap}>
                     <div style={styles.emptyCard}>
@@ -57,9 +95,9 @@ export default function Report() {
                 </section>
             )}
 
-            {/* If a report exists, show it in a glass panel */}
             {report && (
                 <>
+                    {/* Meta */}
                     <section style={styles.metaGlass}>
                         <div style={styles.metaRow}>
                             <div style={styles.metaItem}>
@@ -69,26 +107,23 @@ export default function Report() {
                             <div style={styles.metaItem}>
                                 <div style={styles.metaLabel}>Generated</div>
                                 <div style={styles.metaValue}>
-                                    {report.generatedAt
-                                        ? new Date(report.generatedAt).toLocaleString()
-                                        : new Date().toLocaleString()}
+                                    {report.generatedAt ? new Date(report.generatedAt).toLocaleString() : "N/A"}
                                 </div>
                             </div>
-                            {typeof report.totalFindings === "number" && (
-                                <div style={styles.metaItem}>
-                                    <div style={styles.metaLabel}>Total Findings</div>
-                                    <div style={styles.metaValue}>{report.totalFindings}</div>
-                                </div>
-                            )}
+                            <div style={styles.metaItem}>
+                                <div style={styles.metaLabel}>Total Findings</div>
+                                <div style={styles.metaValue}>{report.totalFindings ?? 0}</div>
+                            </div>
                         </div>
                     </section>
 
+                    {/* Findings Table */}
                     <section style={styles.tableWrap}>
                         <h2 style={styles.h2}>Findings</h2>
 
                         {!hasFindings ? (
                             <div style={styles.emptyPill}>
-                                <b>No findings found.</b>&nbsp; Great job — nothing risky detected in this upload.
+                                <b>No findings found.</b> Great job — nothing risky detected.
                             </div>
                         ) : (
                             <div style={{ overflowX: "auto" }}>
@@ -99,16 +134,14 @@ export default function Report() {
                                             <th style={styles.th}>Risk</th>
                                             <th style={styles.th}>Type</th>
                                             <th style={styles.th}>Snippet</th>
-                                            <th style={styles.th}>Action</th>
+                                            <th style={styles.th}>Recommendation</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         {report.findings.map((f) => (
-                                            <tr key={f.id} style={styles.tr}>
+                                            <tr key={f.id}>
                                                 <td style={styles.td}>{f.platform}</td>
-                                                <td style={{ ...styles.td, ...riskBadge(f.riskLevel) }}>
-                                                    {f.riskLevel}
-                                                </td>
+                                                <td style={{ ...styles.td, ...riskBadge(f.riskLevel) }}>{f.riskLevel}</td>
                                                 <td style={styles.td}>{f.category}</td>
                                                 <td style={styles.td}>{f.snippet}</td>
                                                 <td style={styles.td}>{f.recommendation}</td>
@@ -120,18 +153,14 @@ export default function Report() {
                         )}
                     </section>
 
-                    {/* Optional: quick actions */}
+                    {/* Actions */}
                     <section style={styles.actionsRow}>
                         <button style={styles.secondary} onClick={() => navigate("/dashboard")}>
                             Analyze another file
                         </button>
-                        <a
-                            style={styles.secondaryLink}
-                            href={makeDownloadBlob(report)}
-                            download={`privacy-report-${Date.now()}.json`}
-                        >
-                            Download JSON
-                        </a>
+                        <button style={styles.secondary} onClick={downloadPDF}>
+                            📄 Download PDF
+                        </button>
                     </section>
                 </>
             )}
@@ -142,15 +171,6 @@ export default function Report() {
 }
 
 /* ---------- helpers ---------- */
-function makeDownloadBlob(obj) {
-    try {
-        const blob = new Blob([JSON.stringify(obj, null, 2)], { type: "application/json" });
-        return URL.createObjectURL(blob);
-    } catch {
-        return "#";
-    }
-}
-
 function riskBadge(level = "") {
     const L = (level || "").toLowerCase();
     const base = {
@@ -160,19 +180,13 @@ function riskBadge(level = "") {
         fontWeight: 700,
         fontSize: 12,
     };
-    if (L === "high") {
-        return { ...base, background: "rgba(255,80,80,0.2)", color: "#7a0b0b", border: "1px solid rgba(255,80,80,0.35)" };
-    }
-    if (L === "medium") {
-        return { ...base, background: "rgba(255,200,90,0.2)", color: "#7a4f0b", border: "1px solid rgba(255,200,90,0.35)" };
-    }
-    if (L === "low") {
-        return { ...base, background: "rgba(120,220,160,0.2)", color: "#0b5c3a", border: "1px solid rgba(120,220,160,0.35)" };
-    }
+    if (L === "high") return { ...base, background: "rgba(255,80,80,0.2)", color: "#7a0b0b", border: "1px solid rgba(255,80,80,0.35)" };
+    if (L === "medium") return { ...base, background: "rgba(255,200,90,0.2)", color: "#7a4f0b", border: "1px solid rgba(255,200,90,0.35)" };
+    if (L === "low") return { ...base, background: "rgba(120,220,160,0.2)", color: "#0b5c3a", border: "1px solid rgba(120,220,160,0.35)" };
     return base;
 }
 
-/* ---------- styles (scoped, no global SCSS touched) ---------- */
+/* ---------- styles (scoped) ---------- */
 const styles = {
     page: { padding: 16, color: "#0b1f26" },
     title: { marginBottom: 8 },
@@ -192,17 +206,6 @@ const styles = {
         boxShadow: "0 10px 30px rgba(0,0,0,0.18)",
     },
     shield: { fontSize: 40, marginBottom: 6 },
-    cta: {
-        marginTop: 10,
-        padding: "10px 14px",
-        borderRadius: 12,
-        border: "none",
-        fontWeight: 700,
-        color: "#053f5c",
-        background: "linear-gradient(135deg,#aaf7ff,#7de5ff,#b4f0ff)",
-        boxShadow: "0 6px 16px rgba(0,0,0,0.2)",
-        cursor: "pointer",
-    },
     subtle: { fontSize: 14, opacity: 0.8 },
 
     metaGlass: {
@@ -233,18 +236,15 @@ const styles = {
     },
     table: {
         width: "100%",
-        borderCollapse: "separate",
-        borderSpacing: 0,
+        borderCollapse: "collapse",
         background: "rgba(255,255,255,0.18)",
         border: "1px solid rgba(255,255,255,0.35)",
         borderRadius: 14,
         overflow: "hidden",
         backdropFilter: "blur(10px)",
         WebkitBackdropFilter: "blur(10px)",
-        boxShadow: "0 10px 30px rgba(0,0,0,0.18)",
     },
     th: { textAlign: "left", padding: "12px 14px", fontWeight: 800, fontSize: 13, borderBottom: "1px solid rgba(255,255,255,0.35)" },
-    tr: { transition: "background .15s ease" },
     td: { padding: "12px 14px", borderBottom: "1px solid rgba(255,255,255,0.25)", verticalAlign: "top" },
 
     actionsRow: { marginTop: 16, display: "flex", gap: 10, alignItems: "center" },
@@ -254,13 +254,5 @@ const styles = {
         border: "1px solid rgba(255,255,255,0.35)",
         background: "rgba(255,255,255,0.18)",
         cursor: "pointer",
-    },
-    secondaryLink: {
-        padding: "8px 12px",
-        borderRadius: 10,
-        border: "1px solid rgba(255,255,255,0.35)",
-        background: "rgba(255,255,255,0.18)",
-        textDecoration: "none",
-        color: "inherit",
     },
 };

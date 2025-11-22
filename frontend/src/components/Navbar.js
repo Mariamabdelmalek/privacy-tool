@@ -10,7 +10,7 @@ export default function Navbar({ onLogout }) {
       </div>
       <div className="nav-right">
         <a href="/">Dashboard</a>
-        <a href="/report">Report</a>
+        <a href="/report">Reports</a>
         <button onClick={onLogout}>Logout</button>
       </div>
     </nav>

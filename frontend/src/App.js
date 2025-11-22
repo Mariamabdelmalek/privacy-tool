@@ -9,11 +9,10 @@ import {
 
 import Navbar from "./components/Navbar";
 import Login from "./Login";
-import Scan from "./Scan";
 import Dashboard from "./pages/Dashboard";
-import Report from "./pages/Report";
-
+import Reports from "./pages/Reports";
 import "./styles/App.scss";
+
 
 function App() {
   const [loggedIn, setLoggedIn] = useState(!!localStorage.getItem("token"));
@@ -40,12 +39,12 @@ function App() {
         ) : (
           <>
             {/* Protected routes */}
-            <Route path="/scan" element={<Scan />} />
+             {/* Default redirect when logged in */}
+            
             <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/report" element={<Report />} />
-
-            {/* Default redirect when logged in */}
+            <Route path="/reports" element={<Reports />} />
             <Route path="*" element={<Navigate to="/dashboard" />} />
+            
           </>
         )}
       </Routes>

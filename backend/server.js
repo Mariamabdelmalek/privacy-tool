@@ -1,149 +1,149 @@
-const fs = require("fs");
-const path = require("path");
-const { parse } = require("csv-parse/sync");
-
+// backend/server.js
 const express = require("express");
 const fileUpload = require("express-fileupload");
 const cors = require("cors");
+const fs = require("fs");
+const path = require("path");
+const unzipper = require("unzipper");
+const csvParse = require("csv-parse/sync");
+
 const app = express();
 const PORT = 8000;
 
 // Middleware
-app.use(cors()); // optional since CRA proxy works
+app.use(cors());
 app.use(fileUpload());
 
-// Dummy /scan endpoint
-app.post("/scan", (req, res) => {
-  if (!req.files || !req.files.file) {
-    return res.status(400).json({ error: "No file uploaded" });
-  }
-
-  const file = req.files.file;
-
-  // For demo: pretend we scanned and return dummy data
-  const dummyResult = {
-    summary: { num_posts: 2 },
-    results: [
-      {
-        text_snippet: "This is a post snippet...",
-        findings: [
-          { type: "person", match: "John Doe", source: "ner" },
-          { type: "email", match: "john@example.com", source: "regex" }
-        ],
-        risk_score: 0.7,
-        recommendations: ["Remove sensitive info", "Use pseudonyms"]
-      },
-      {
-        text_snippet: "Another post snippet...",
-        findings: [
-          { type: "gpe", match: "New York", source: "ner" }
-        ],
-        risk_score: 0.3,
-        recommendations: ["Avoid location tagging"]
-      }
-    ]
-  };
-
-  res.json(dummyResult);
-});
-
-// Helper: build the JSON shape your frontend expects
-function buildReport({ scope = "Uploaded file", findings = [] }) {
-  return {
-    scope,
-    generatedAt: new Date().toISOString(),
-    totalFindings: findings.length,
-    findings,
-  };
-}
-
-// very simple text analyzers (demo quality)
+// -------------------
+// Utility: Analyze Text
+// -------------------
 const PHONE_RE = /\(?\b[2-9]\d{2}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b/;
-const COORDS_RE = /\b-?\d{1,2}\.\d+,\s*-?\d{1,3}\.\d+\b/;
+const EMAIL_RE = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i;
 const ADDRESS_WORDS = ["street", "st.", "ave", "avenue", "rd", "road", "drive", "dr", "blvd", "lane", "ln"];
-function analyzeText(platform, text) {
-  const out = [];
+
+function analyzeText(text) {
+  const findings = [];
+  const recommendations = [];
+  let risk_score = 0;
+
   if (PHONE_RE.test(text)) {
-    out.push({
-      id: Math.random().toString(36).slice(2, 10),
-      platform,
-      riskLevel: "High",
-      category: "PII Exposure",
-      snippet: "Phone number detected",
-      recommendation: "Remove phone number; share via DM or masked email.",
-    });
+    findings.push({ type: "PHONE", match: text.match(PHONE_RE)[0], source: "regex" });
+    recommendations.push("Remove phone number from post.");
+    risk_score += 5;
   }
-  if (COORDS_RE.test(text)) {
-    out.push({
-      id: Math.random().toString(36).slice(2, 10),
-      platform,
-      riskLevel: "Medium",
-      category: "Location",
-      snippet: "Precise coordinates detected",
-      recommendation: "Remove precise location; disable geo-tagging.",
-    });
+
+  if (EMAIL_RE.test(text)) {
+    findings.push({ type: "EMAIL", match: text.match(EMAIL_RE)[0], source: "regex" });
+    recommendations.push("Remove email from post.");
+    risk_score += 5;
   }
+
   if (ADDRESS_WORDS.some(w => text.toLowerCase().includes(w))) {
-    out.push({
-      id: Math.random().toString(36).slice(2, 10),
-      platform,
-      riskLevel: "High",
-      category: "Sensitive Location",
-      snippet: "Possible street address in content",
-      recommendation: "Redact address or restrict audience.",
-    });
+    findings.push({ type: "ADDRESS", match: "Possible street address", source: "regex" });
+    recommendations.push("Redact address or restrict audience.");
+    risk_score += 5;
   }
-  return out;
+
+  if (risk_score > 10) risk_score = 10;
+
+  return { findings, recommendations, risk_score };
 }
 
-/**
- * POST /api/report/upload
- * Accepts a file field named "file" (.json or .csv) and returns a normalized report JSON.
- */
-app.post("/api/report/upload", async (req, res) => {
+// -------------------
+// Utility: Extract posts/messages
+// -------------------
+async function extractPosts(filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  let posts = [];
+
+  if (ext === ".zip") {
+    const dir = path.join(__dirname, "tmp", Date.now().toString());
+    fs.mkdirSync(dir, { recursive: true });
+
+    await fs.createReadStream(filePath)
+      .pipe(unzipper.Extract({ path: dir }))
+      .promise();
+
+    const files = fs.readdirSync(dir);
+    for (const f of files) {
+      const fPath = path.join(dir, f);
+      posts.push(...await extractPosts(fPath));
+    }
+    return posts;
+  }
+
+  if (ext === ".json") {
+    const raw = fs.readFileSync(filePath, "utf8");
+    const data = JSON.parse(raw);
+    const items = Array.isArray(data) ? data : (Array.isArray(data.items) ? data.items : []);
+    posts = items.map(item => {
+      const text = [item.text, item.content, item.caption, item.bio].filter(Boolean).join(" ");
+      return { text };
+    });
+    return posts;
+  }
+
+  if (ext === ".csv") {
+    const raw = fs.readFileSync(filePath, "utf8");
+    const rows = csvParse.parse(raw, { columns: true, skip_empty_lines: true });
+    posts = rows.map(r => {
+      const text = [r.text, r.content, r.caption, r.bio, r.exif, r.location].filter(Boolean).join(" ");
+      return { text };
+    });
+    return posts;
+  }
+
+  if (ext === ".html") {
+    const raw = fs.readFileSync(filePath, "utf8");
+    const matches = raw.match(/<p>(.*?)<\/p>/gi) || [];
+    posts = matches.map(m => ({ text: m.replace(/<\/?p>/g, "") }));
+    return posts;
+  }
+
+  throw new Error(`Unsupported file type: ${ext}`);
+}
+
+// -------------------
+// /scan Endpoint
+// -------------------
+app.post("/scan", async (req, res) => {
   try {
-    if (!req.files || !req.files.file) {
-      return res.status(400).json({ error: "No file uploaded (field name must be 'file')." });
-    }
+    if (!req.files || !req.files.file) return res.status(400).json({ error: "No file uploaded" });
 
-    const up = req.files.file; // from express-fileupload
-    const ext = (up.name.split(".").pop() || "").toLowerCase();
-    const raw = up.data.toString("utf8");
+    const file = req.files.file;
+    const tempDir = path.join(__dirname, "tmp");
+    fs.mkdirSync(tempDir, { recursive: true });
+    const tempPath = path.join(tempDir, `${Date.now()}-${file.name}`);
+    fs.writeFileSync(tempPath, file.data);
 
-    // Case 1: JSON
-    if (ext === "json") {
-      const json = JSON.parse(raw);
-      // If it already looks like a report, just echo it back
-      if (Array.isArray(json.findings)) return res.json(json);
+    const posts = await extractPosts(tempPath);
 
-      // Otherwise, try to infer from array/items
-      const items = Array.isArray(json) ? json : (Array.isArray(json.items) ? json.items : []);
-      const findings = [];
-      for (const item of items) {
-        const platform = item.platform || "Unknown";
-        const text = [item.content, item.caption, item.bio, item.text].filter(Boolean).join(" ");
-        if (text) findings.push(...analyzeText(platform, text));
-      }
-      return res.json(buildReport({ scope: "JSON upload", findings }));
-    }
+    const results = posts.map(p => {
+      const analysis = analyzeText(p.text);
+      return {
+        text_snippet: p.text.substring(0, 100) + (p.text.length > 100 ? "..." : ""),
+        risk_score: analysis.risk_score,
+        findings: analysis.findings,
+        recommendations: analysis.recommendations
+      };
+    });
 
-    // Case 2: CSV
-    if (ext === "csv") {
-      const rows = parse(raw, { columns: true, skip_empty_lines: true });
-      const findings = [];
-      for (const r of rows) {
-        const platform = r.platform || r.site || "Unknown";
-        const text = [r.content, r.caption, r.bio, r.text, r.exif, r.location].filter(Boolean).join(" ");
-        if (text) findings.push(...analyzeText(platform, text));
-      }
-      return res.json(buildReport({ scope: "CSV upload", findings }));
-    }
+    const summary = {
+      num_posts: results.length,
+      high_risk_count: results.filter(r => r.risk_score >= 5).length
+    };
 
-    return res.status(400).json({ error: `Unsupported file type: .${ext}. Upload .json or .csv.` });
-  } catch (e) {
-    return res.status(500).json({ error: e.message });
+    res.json({ summary, results });
+
+    // Clean up temp file
+    fs.unlinkSync(tempPath);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
   }
 });
 
-
+// -------------------
+// Start server
+// -------------------
 app.listen(PORT, () => console.log(`Backend running on http://localhost:${PORT}`));

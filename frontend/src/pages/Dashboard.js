@@ -57,33 +57,40 @@ export default function Dashboard() {
     }, []);
 
     async function handleUpload() {
-        if (!file) return;
-        setUploading(true);
-        setErr("");
+  if (!file) return;
+  setUploading(true);
+  setErr("");
 
-        try {
-            const form = new FormData();
-            form.append("file", file); // field name MUST be "file"
+  try {
+    const form = new FormData();
+    form.append("file", file); // field name MUST be "file"
 
-            const res = await fetch(`${base}/api/report/upload`, {
-                method: "POST",
-                body: form,
-            });
+    // Use /scan route
+    const res = await fetch(`${base}/scan`, {
+      method: "POST",
+      body: form,
+    });
 
-            if (!res.ok) {
-                const t = await res.text();
-                setErr(`Upload failed: ${res.status} ${t}`);
-                setUploading(false);
-                return;
-            }
-
-            const data = await res.json();
-            navigate("/report", { state: { report: data } });
-        } catch (e) {
-            setErr(`Upload failed: ${e.message}`);
-            setUploading(false);
-        }
+    if (!res.ok) {
+      const t = await res.text();
+      setErr(`Upload failed: ${res.status} ${t}`);
+      setUploading(false);
+      return;
     }
+
+    const data = await res.json();
+
+    // Navigate to reports page with the data
+    navigate("/reports", { state: { report: data } });
+
+  } catch (e) {
+    setErr(`Upload failed: ${e.message}`);
+    setUploading(false);
+  } finally {
+    setUploading(false);
+  }
+}
+
 
     return (
         <main style={styles.page}>
