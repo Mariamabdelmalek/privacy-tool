@@ -3,7 +3,7 @@
 
 /* Your body, button, and other styles */
 body {
-  background-image: url('../assets/background.jpg');
+  background-image: url('../assets/backtool.png');
   background-repeat: no-repeat;
   background-position: center top;
   background-size: 55%;
@@ -156,7 +156,7 @@ button:hover {
 body {
   margin: 0 ;
   padding: 0;
-  background-image: url("../assets/background.jpg");
+  background-image: url("../assets/backtool.png");
   background-size:contain;        
   background-repeat: no-repeat;
   background-position: center ; ;
@@ -169,7 +169,7 @@ body {
   justify-content: center;
   align-items: center;
   height: 100vh;
-  background: url('../assets/background.jpg') no-repeat center center;
+  background: url('../assets/backtool.png') no-repeat center center;
   background-size: cover;
 }
 
