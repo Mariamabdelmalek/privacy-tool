@@ -5,145 +5,178 @@ const cors = require("cors");
 const fs = require("fs");
 const path = require("path");
 const unzipper = require("unzipper");
-const csvParse = require("csv-parse/sync");
+const { parse } = require("csv-parse/sync");
 
 const app = express();
-const PORT = 8000;
-
-// Middleware
 app.use(cors());
 app.use(fileUpload());
 
-// -------------------
-// Utility: Analyze Text
-// -------------------
-const PHONE_RE = /\(?\b[2-9]\d{2}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b/;
+const PORT = 8000;
+
+// REGEX PATTERNS FOR LEAKING DATA
+
+const PHONE_RE = /\b(\+?\d{1,2}[-.\s]?)?(\(?\d{3}\)?[-.\s]?)\d{3}[-.\s]?\d{4}\b/;
 const EMAIL_RE = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i;
-const ADDRESS_WORDS = ["street", "st.", "ave", "avenue", "rd", "road", "drive", "dr", "blvd", "lane", "ln"];
+const ADDRESS_WORDS = [
+  "street", "st.", "st ", "avenue", "ave", "road", "rd", "drive", "dr",
+  "lane", "ln", "blvd", "boulevard", "way", "court", "ct"
+];
+
+// ANALYZE TEXT FOR LEAKS
 
 function analyzeText(text) {
   const findings = [];
-  const recommendations = [];
-  let risk_score = 0;
+  let score = 0;
+
+  if (!text || text.trim() === "") return { findings, score };
 
   if (PHONE_RE.test(text)) {
-    findings.push({ type: "PHONE", match: text.match(PHONE_RE)[0], source: "regex" });
-    recommendations.push("Remove phone number from post.");
-    risk_score += 5;
+    findings.push({ type: "PHONE", value: text.match(PHONE_RE)[0] });
+    score += 4;
   }
-
   if (EMAIL_RE.test(text)) {
-    findings.push({ type: "EMAIL", match: text.match(EMAIL_RE)[0], source: "regex" });
-    recommendations.push("Remove email from post.");
-    risk_score += 5;
+    findings.push({ type: "EMAIL", value: text.match(EMAIL_RE)[0] });
+    score += 4;
   }
-
   if (ADDRESS_WORDS.some(w => text.toLowerCase().includes(w))) {
-    findings.push({ type: "ADDRESS", match: "Possible street address", source: "regex" });
-    recommendations.push("Redact address or restrict audience.");
-    risk_score += 5;
+    findings.push({ type: "ADDRESS", value: "Possible address found" });
+    score += 3;
   }
 
-  if (risk_score > 10) risk_score = 10;
-
-  return { findings, recommendations, risk_score };
+  return { findings, score };
 }
 
-// -------------------
-// Utility: Extract posts/messages
-// -------------------
-async function extractPosts(filePath) {
-  const ext = path.extname(filePath).toLowerCase();
-  let posts = [];
+// PARSE INSTAGRAM EXPORT FILE
 
-  if (ext === ".zip") {
-    const dir = path.join(__dirname, "tmp", Date.now().toString());
-    fs.mkdirSync(dir, { recursive: true });
+async function unzipFile(zipPath, extractTo) {
+  await fs.createReadStream(zipPath)
+    .pipe(unzipper.Extract({ path: extractTo }))
+    .promise();
+}
 
-    await fs.createReadStream(filePath)
-      .pipe(unzipper.Extract({ path: dir }))
-      .promise();
+function readJSON(filePath) {
+  try {
+    return JSON.parse(fs.readFileSync(filePath, "utf8"));
+  } catch (err) {
+    return null;
+  }
+}
 
-    const files = fs.readdirSync(dir);
-    for (const f of files) {
-      const fPath = path.join(dir, f);
-      posts.push(...await extractPosts(fPath));
+function readHTML(filePath) {
+  const raw = fs.readFileSync(filePath, "utf8");
+  const matches = raw.match(/>([^<]{5,})</g) || [];
+  return matches.map(m => m.replace(/[><]/g, "").trim());
+}
+
+function readCSV(filePath) {
+  const raw = fs.readFileSync(filePath, "utf8");
+  return parse(raw, { columns: true });
+}
+
+// Recursively scan folders
+function scanDirectory(dir) {
+  let all_text = [];
+
+  const entries = fs.readdirSync(dir, { withFileTypes: true });
+  for (const entry of entries) {
+    const fullPath = path.join(dir, entry.name);
+
+    if (entry.isDirectory()) {
+      all_text.push(...scanDirectory(fullPath));
+      continue;
     }
-    return posts;
+
+    const ext = path.extname(entry.name).toLowerCase();
+
+    if (ext === ".json") {
+      const data = readJSON(fullPath);
+      if (!data) continue;
+
+      const items = Array.isArray(data) ? data : data.items || data.ig_followers || [];
+      for (const item of items) {
+        const text = [
+          item.text,
+          item.caption,
+          item.title,
+          item.message,
+          item.string_list_data?.map(x => x.value).join(" ")
+        ]
+          .filter(Boolean)
+          .join(" ");
+
+        if (text.length > 0) all_text.push(text);
+      }
+    }
+
+    if (ext === ".html") {
+      all_text.push(...readHTML(fullPath));
+    }
+
+    if (ext === ".csv") {
+      const rows = readCSV(fullPath);
+      for (const r of rows) {
+        const text = Object.values(r).join(" ");
+        all_text.push(text);
+      }
+    }
   }
 
-  if (ext === ".json") {
-    const raw = fs.readFileSync(filePath, "utf8");
-    const data = JSON.parse(raw);
-    const items = Array.isArray(data) ? data : (Array.isArray(data.items) ? data.items : []);
-    posts = items.map(item => {
-      const text = [item.text, item.content, item.caption, item.bio].filter(Boolean).join(" ");
-      return { text };
-    });
-    return posts;
-  }
-
-  if (ext === ".csv") {
-    const raw = fs.readFileSync(filePath, "utf8");
-    const rows = csvParse.parse(raw, { columns: true, skip_empty_lines: true });
-    posts = rows.map(r => {
-      const text = [r.text, r.content, r.caption, r.bio, r.exif, r.location].filter(Boolean).join(" ");
-      return { text };
-    });
-    return posts;
-  }
-
-  if (ext === ".html") {
-    const raw = fs.readFileSync(filePath, "utf8");
-    const matches = raw.match(/<p>(.*?)<\/p>/gi) || [];
-    posts = matches.map(m => ({ text: m.replace(/<\/?p>/g, "") }));
-    return posts;
-  }
-
-  throw new Error(`Unsupported file type: ${ext}`);
+  return all_text;
 }
 
-// -------------------
-// /scan Endpoint
-// -------------------
+// /upload → scan Instagram export
+
 app.post("/scan", async (req, res) => {
   try {
-    if (!req.files || !req.files.file) return res.status(400).json({ error: "No file uploaded" });
+    if (!req.files || !req.files.file)
+      return res.status(400).json({ error: "No file uploaded" });
 
     const file = req.files.file;
-    const tempDir = path.join(__dirname, "tmp");
-    fs.mkdirSync(tempDir, { recursive: true });
-    const tempPath = path.join(tempDir, `${Date.now()}-${file.name}`);
-    fs.writeFileSync(tempPath, file.data);
 
-    const posts = await extractPosts(tempPath);
+    if (!file.name.endsWith(".zip"))
+      return res.status(400).json({ error: "Please upload your Instagram ZIP export" });
 
-    const results = posts.map(p => {
-      const analysis = analyzeText(p.text);
+    const UPLOAD_DIR = path.join(__dirname, "uploads");
+    fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+
+    const zipPath = path.join(UPLOAD_DIR, `${Date.now()}-${file.name}`);
+    fs.writeFileSync(zipPath, file.data);
+
+    const extractDir = path.join(
+      __dirname,
+      "extracted",
+      `ig-${Date.now()}`
+    );
+    fs.mkdirSync(extractDir, { recursive: true });
+
+    await unzipFile(zipPath, extractDir);
+
+    const all_text = scanDirectory(extractDir);
+
+    const results = all_text.map(t => {
+      const analysis = analyzeText(t);
       return {
-        text_snippet: p.text.substring(0, 100) + (p.text.length > 100 ? "..." : ""),
-        risk_score: analysis.risk_score,
+        snippet: t.substring(0, 120),
         findings: analysis.findings,
-        recommendations: analysis.recommendations
+        score: analysis.score,
       };
     });
 
     const summary = {
-      num_posts: results.length,
-      high_risk_count: results.filter(r => r.risk_score >= 5).length
+      total_items_scanned: results.length,
+      high_risk_items: results.filter(r => r.score >= 4).length,
     };
 
-    res.json({ summary, results });
+    return res.json({ summary, results });
 
-    // Clean up temp file
-    fs.unlinkSync(tempPath);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: err.message });
   }
 });
 
-// -------------------
-// Start server
-// -------------------
-app.listen(PORT, () => console.log(`Backend running on http://localhost:${PORT}`));
+// START SERVER
+
+app.listen(PORT, () =>
+  console.log(`Backend running at http://localhost:${PORT}`)
+);
