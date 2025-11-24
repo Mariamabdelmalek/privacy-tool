@@ -11,11 +11,12 @@ const app = express();
 app.use(cors());
 app.use(fileUpload());
 
+// PORT
 const PORT = process.env.PORT || 5000;
 
-// ------------------
-// Regex patterns
-// ------------------
+// ------------------------
+// REGEX PATTERNS FOR LEAKING DATA
+// ------------------------
 const PHONE_RE = /\b(\+?\d{1,2}[-.\s]?)?(\(?\d{3}\)?[-.\s]?)\d{3}[-.\s]?\d{4}\b/;
 const EMAIL_RE = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i;
 const ADDRESS_WORDS = [
@@ -23,9 +24,9 @@ const ADDRESS_WORDS = [
   "lane", "ln", "blvd", "boulevard", "way", "court", "ct"
 ];
 
-// ------------------
-// Text analysis
-// ------------------
+// ------------------------
+// ANALYZE TEXT FOR LEAKS
+// ------------------------
 function analyzeText(text) {
   const findings = [];
   let score = 0;
@@ -48,9 +49,9 @@ function analyzeText(text) {
   return { findings, score };
 }
 
-// ------------------
-// File parsing helpers
-// ------------------
+// ------------------------
+// HELPER FUNCTIONS
+// ------------------------
 async function unzipFile(zipPath, extractTo) {
   await fs.createReadStream(zipPath)
     .pipe(unzipper.Extract({ path: extractTo }))
@@ -60,7 +61,7 @@ async function unzipFile(zipPath, extractTo) {
 function readJSON(filePath) {
   try {
     return JSON.parse(fs.readFileSync(filePath, "utf8"));
-  } catch (err) {
+  } catch {
     return null;
   }
 }
@@ -76,11 +77,10 @@ function readCSV(filePath) {
   return parse(raw, { columns: true });
 }
 
-// Recursively scan directory
 function scanDirectory(dir) {
   let all_text = [];
-
   const entries = fs.readdirSync(dir, { withFileTypes: true });
+
   for (const entry of entries) {
     const fullPath = path.join(dir, entry.name);
 
@@ -127,18 +127,17 @@ function scanDirectory(dir) {
   return all_text;
 }
 
-// ------------------
-// API endpoint
-// ------------------
+// ------------------------
+// UPLOAD /SCAN ENDPOINT
+// ------------------------
 app.post("/scan", async (req, res) => {
   try {
     if (!req.files || !req.files.file)
       return res.status(400).json({ error: "No file uploaded" });
 
     const file = req.files.file;
-
     if (!file.name.endsWith(".zip"))
-      return res.status(400).json({ error: "Please upload a ZIP file" });
+      return res.status(400).json({ error: "Upload a ZIP file" });
 
     const UPLOAD_DIR = path.join(__dirname, "uploads");
     fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -167,26 +166,26 @@ app.post("/scan", async (req, res) => {
       high_risk_items: results.filter(r => r.score >= 4).length,
     };
 
-    return res.json({ summary, results });
+    res.json({ summary, results });
 
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ error: err.message });
+    res.status(500).json({ error: err.message });
   }
 });
 
-// ------------------
-// Serve frontend (React SPA) for all other routes
-// ------------------
+// ------------------------
+// SERVE REACT FRONTEND
+// ------------------------
 app.use(express.static(path.join(__dirname, "../frontend/build")));
 
 app.get("*", (req, res) => {
-  res.sendFile(path.join(__dirname, "../frontend/build/index.html"));
+  res.sendFile(path.join(__dirname, "../frontend/build", "index.html"));
 });
 
-// ------------------
-// Start server
-// ------------------
+// ------------------------
+// START SERVER
+// ------------------------
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`Backend running at http://localhost:${PORT}`);
 });
