@@ -11,10 +11,11 @@ const app = express();
 app.use(cors());
 app.use(fileUpload());
 
-const PORT = 8000;
+const PORT = process.env.PORT || 5000;
 
-// REGEX PATTERNS FOR LEAKING DATA
-
+// ------------------
+// Regex patterns
+// ------------------
 const PHONE_RE = /\b(\+?\d{1,2}[-.\s]?)?(\(?\d{3}\)?[-.\s]?)\d{3}[-.\s]?\d{4}\b/;
 const EMAIL_RE = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i;
 const ADDRESS_WORDS = [
@@ -22,8 +23,9 @@ const ADDRESS_WORDS = [
   "lane", "ln", "blvd", "boulevard", "way", "court", "ct"
 ];
 
-// ANALYZE TEXT FOR LEAKS
-
+// ------------------
+// Text analysis
+// ------------------
 function analyzeText(text) {
   const findings = [];
   let score = 0;
@@ -46,8 +48,9 @@ function analyzeText(text) {
   return { findings, score };
 }
 
-// PARSE INSTAGRAM EXPORT FILE
-
+// ------------------
+// File parsing helpers
+// ------------------
 async function unzipFile(zipPath, extractTo) {
   await fs.createReadStream(zipPath)
     .pipe(unzipper.Extract({ path: extractTo }))
@@ -73,7 +76,7 @@ function readCSV(filePath) {
   return parse(raw, { columns: true });
 }
 
-// Recursively scan folders
+// Recursively scan directory
 function scanDirectory(dir) {
   let all_text = [];
 
@@ -124,8 +127,9 @@ function scanDirectory(dir) {
   return all_text;
 }
 
-// /upload → scan Instagram export
-
+// ------------------
+// API endpoint
+// ------------------
 app.post("/scan", async (req, res) => {
   try {
     if (!req.files || !req.files.file)
@@ -134,7 +138,7 @@ app.post("/scan", async (req, res) => {
     const file = req.files.file;
 
     if (!file.name.endsWith(".zip"))
-      return res.status(400).json({ error: "Please upload your Instagram ZIP export" });
+      return res.status(400).json({ error: "Please upload a ZIP file" });
 
     const UPLOAD_DIR = path.join(__dirname, "uploads");
     fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -142,11 +146,7 @@ app.post("/scan", async (req, res) => {
     const zipPath = path.join(UPLOAD_DIR, `${Date.now()}-${file.name}`);
     fs.writeFileSync(zipPath, file.data);
 
-    const extractDir = path.join(
-      __dirname,
-      "extracted",
-      `ig-${Date.now()}`
-    );
+    const extractDir = path.join(__dirname, "extracted", `ig-${Date.now()}`);
     fs.mkdirSync(extractDir, { recursive: true });
 
     await unzipFile(zipPath, extractDir);
@@ -175,8 +175,18 @@ app.post("/scan", async (req, res) => {
   }
 });
 
-// START SERVER
+// ------------------
+// Serve frontend (React SPA) for all other routes
+// ------------------
+app.use(express.static(path.join(__dirname, "../frontend/build")));
 
-app.listen(PORT, () =>
-  console.log(`Backend running at http://localhost:${PORT}`)
-);
+app.get("*", (req, res) => {
+  res.sendFile(path.join(__dirname, "../frontend/build/index.html"));
+});
+
+// ------------------
+// Start server
+// ------------------
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
