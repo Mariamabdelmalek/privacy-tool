@@ -1,3 +1,4 @@
+// src/pages/Dashboard.js
 import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -5,39 +6,29 @@ export default function Dashboard() {
   const [err, setErr] = useState("");
   const [file, setFile] = useState(null);
   const [uploading, setUploading] = useState(false);
-  const navigate = useNavigate();
   const dropRef = useRef(null);
+  const navigate = useNavigate();
 
-  // CRA uses process.env.REACT_APP_*
+  // Render environment API URL
   const base = process.env.REACT_APP_API_URL;
 
-  // Drag & drop listeners
+  /*---------------------------
+    Drag & Drop upload handler
+  ----------------------------*/
   useEffect(() => {
     const el = dropRef.current;
     if (!el) return;
 
-    const prevent = (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-    };
-    const onEnter = (e) => {
-      prevent(e);
-      el.classList.add("is-dragover");
-    };
-    const onOver = (e) => {
-      prevent(e);
-      el.classList.add("is-dragover");
-    };
-    const onLeave = (e) => {
-      prevent(e);
-      el.classList.remove("is-dragover");
-    };
+    const prevent = (e) => { e.preventDefault(); e.stopPropagation(); };
+
+    const onEnter = (e) => { prevent(e); el.classList.add("is-dragover"); };
+    const onOver = (e) => { prevent(e); el.classList.add("is-dragover"); };
+    const onLeave = (e) => { prevent(e); el.classList.remove("is-dragover"); };
+
     const onDrop = (e) => {
       prevent(e);
       el.classList.remove("is-dragover");
-      if (e.dataTransfer?.files?.[0]) {
-        setFile(e.dataTransfer.files[0]);
-      }
+      if (e.dataTransfer?.files?.[0]) setFile(e.dataTransfer.files[0]);
     };
 
     el.addEventListener("dragenter", onEnter);
@@ -53,10 +44,12 @@ export default function Dashboard() {
     };
   }, []);
 
-  // MAIN Upload & Scan
+  /*---------------------------
+    Upload + Scan file
+  ----------------------------*/
   async function handleUpload() {
     if (!file) {
-      setErr("Please choose a file before scanning.");
+      setErr("Please select a ZIP file.");
       return;
     }
 
@@ -73,43 +66,41 @@ export default function Dashboard() {
       });
 
       if (!res.ok) {
-        const t = await res.text();
-        setErr(`Upload failed: ${res.status} ${t}`);
+        const message = await res.text();
+        setErr(`Upload failed: ${message}`);
         setUploading(false);
         return;
       }
 
       const data = await res.json(); // { summary, results }
 
-      // Convert backend results to reports-page format
+      /* ------------------------
+         Convert backend → report format
+      -------------------------*/
       const flatFindings = [];
 
       if (Array.isArray(data.results)) {
-        data.results.forEach((item, idx) => {
-          const riskScore = item.risk_score ?? item.score ?? 0;
-          const riskLevel =
-            riskScore >= 5 ? "High" : riskScore > 0 ? "Medium" : "Low";
+        data.results.forEach((item, index) => {
+          const snippet = item.snippet || item.text_snippet || "";
+          const score = item.score ?? item.risk_score ?? 0;
 
-          const snippet = item.snippet ?? item.text_snippet ?? "";
+          const riskLevel =
+            score >= 4 ? "High" :
+            score >= 2 ? "Medium" :
+            score > 0 ? "Low" : "Safe";
 
           const findings = Array.isArray(item.findings) ? item.findings : [];
+
           findings.forEach((f, i) => {
             const type = f.type || "PII";
-            let recommendation = "Consider removing or limiting this information.";
 
-            if (type === "PHONE") {
-              recommendation =
-                "Avoid posting phone numbers in captions or comments.";
-            } else if (type === "EMAIL") {
-              recommendation =
-                "Remove personal email from public posts or bios.";
-            } else if (type === "ADDRESS") {
-              recommendation =
-                "Never share home or work addresses publicly.";
-            }
+            let recommendation = "Review this data before posting.";
+            if (type === "PHONE") recommendation = "Avoid posting phone numbers publicly.";
+            if (type === "EMAIL") recommendation = "Avoid posting email addresses.";
+            if (type === "ADDRESS") recommendation = "Avoid posting home/work addresses.";
 
             flatFindings.push({
-              id: `${idx}-${i}`,
+              id: `${index}-${i}`,
               platform: "Instagram",
               riskLevel,
               category: type,
@@ -121,15 +112,17 @@ export default function Dashboard() {
       }
 
       const report = {
-        scope: "Instagram data export",
+        scope: "Instagram Export ZIP",
         generatedAt: new Date().toISOString(),
         totalFindings: flatFindings.length,
         findings: flatFindings,
+        results: data.results, // needed for pie chart
       };
 
       navigate("/reports", { state: { report } });
+
     } catch (e) {
-      setErr(`Upload failed: ${e.message}`);
+      setErr(`Upload error: ${e.message}`);
     } finally {
       setUploading(false);
     }
@@ -138,57 +131,49 @@ export default function Dashboard() {
   return (
     <main style={styles.page}>
       <h1 style={styles.title}>Privacy Risk Dashboard</h1>
-      {err && <div style={styles.note}>Error: {err}</div>}
+
+      {err && <div style={styles.error}>⚠ {err}</div>}
 
       <section style={styles.glass}>
-        <div style={styles.glassHeader}>
-          <div style={styles.glassTitle}>
-            <span style={styles.badge}>New</span>
-            Upload data to generate a report
-          </div>
-          <p style={styles.subtle}>
-            Upload your Instagram export ZIP. We’ll analyze it and generate a detailed report.
-          </p>
+        <div style={styles.header}>
+          <span style={styles.badge}>New</span>
+          <p>Upload your Instagram ZIP export for analysis.</p>
         </div>
 
-        {/* Upload zone */}
+        {/* Dropzone */}
         <div ref={dropRef} style={styles.dropzone} className="dropzone">
           <div style={styles.dropInner}>
             <div style={styles.cloud}>☁️</div>
-            <div>
-              <div style={{ fontWeight: 600 }}>Drag & drop your file here</div>
-              <div style={styles.subtle}>or</div>
-            </div>
+            <strong>Drag & drop your ZIP here</strong>
+            <span style={styles.subtle}>or</span>
 
             <label style={styles.pickButton}>
               Choose File
               <input
                 type="file"
                 accept=".zip"
-                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
                 style={{ display: "none" }}
+                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
               />
             </label>
           </div>
 
-          {file && <div style={styles.fileName}>Selected: {file.name}</div>}
+          {file && <div style={styles.filename}>Selected: {file.name}</div>}
         </div>
 
         <button
           onClick={handleUpload}
           disabled={!file || uploading}
-          style={{
-            ...styles.cta,
-            ...((!file || uploading) ? styles.ctaDisabled : {}),
-          }}
+          style={{ ...styles.cta, ...(uploading || !file ? styles.disabled : {}) }}
         >
           {uploading ? "Analyzing…" : "Analyze & View Report"}
         </button>
       </section>
 
+      {/* Inline dragover style */}
       <style>{`
         .dropzone.is-dragover {
-          outline: 2px dashed rgba(255,255,255,0.8);
+          outline: 2px dashed #fff;
           background: rgba(255,255,255,0.1);
         }
       `}</style>
@@ -196,69 +181,59 @@ export default function Dashboard() {
   );
 }
 
-// Styles
+/* ------------------------------
+   Styles
+------------------------------ */
 const styles = {
-  page: { padding: 16, color: "#0b1f26" },
-  title: { marginBottom: 8 },
-  note: { color: "red", marginBottom: 10 },
+  page: { padding: 20, color: "#0b1f26" },
+  title: { fontSize: 24, marginBottom: 15 },
+  error: { color: "red", marginBottom: 10 },
 
   glass: {
-    margin: "16px 0 24px",
     padding: 20,
     borderRadius: 16,
     background: "rgba(255,255,255,0.2)",
-    border: "1px solid rgba(255,255,255,0.35)",
-    backdropFilter: "blur(6px)",
+    border: "1px solid rgba(255,255,255,0.3)",
+    backdropFilter: "blur(5px)",
   },
 
-  glassHeader: { marginBottom: 12 },
-  glassTitle: {
-    fontSize: 20,
-    fontWeight: 700,
-    display: "flex",
-    gap: 8,
-  },
-
+  header: { marginBottom: 10 },
   badge: {
-    background: "linear-gradient(135deg,#8be3ff,#6ecbff)",
-    padding: "2px 8px",
-    borderRadius: 999,
-    fontSize: 12,
-    fontWeight: 700,
+    display: "inline-block",
+    background: "#8be3ff",
+    padding: "3px 8px",
+    borderRadius: 8,
+    fontWeight: 600,
+    marginBottom: 6,
   },
 
-  subtle: { opacity: 0.8, fontSize: 13 },
   dropzone: {
-    marginTop: 8,
+    marginTop: 10,
+    padding: 20,
     borderRadius: 14,
-    background: "rgba(255,255,255,0.12)",
     outline: "2px dashed rgba(255,255,255,0.5)",
-    padding: 18,
   },
-  dropInner: {
-    display: "grid",
-    placeItems: "center",
-    textAlign: "center",
-    gap: 8,
-  },
-  cloud: { fontSize: 32, marginBottom: 6 },
+  dropInner: { textAlign: "center", display: "grid", placeItems: "center", gap: 6 },
+  cloud: { fontSize: 32 },
   pickButton: {
-    background: "white",
+    background: "#fff",
     padding: "6px 12px",
     borderRadius: 10,
-    fontWeight: 600,
+    fontWeight: 700,
     cursor: "pointer",
   },
-  fileName: { marginTop: 8, opacity: 0.8 },
+  filename: { marginTop: 8, opacity: 0.8 },
 
   cta: {
     marginTop: 14,
     padding: "10px 14px",
+    background: "linear-gradient(135deg,#7de5ff,#b4f0ff)",
     borderRadius: 12,
-    border: "none",
     fontWeight: 700,
-    background: "linear-gradient(135deg,#aaf7ff,#7de5ff)",
     cursor: "pointer",
+    border: "none",
   },
-  ctaDisabled: { opacity: 0.5, cursor: "not-allowed" },
+  disabled: { opacity: 0.5, cursor: "not-allowed" },
+
+  subtle: { opacity: 0.7, fontSize: 12 },
 };
