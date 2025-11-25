@@ -8,50 +8,60 @@ const unzipper = require("unzipper");
 const { parse } = require("csv-parse/sync");
 
 const app = express();
-app.use(cors());
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// Allow deployed frontend
+app.use(
+  cors({
+    origin: "*",
+  })
+);
+
 app.use(fileUpload());
 
-// PORT
 const PORT = process.env.PORT || 5000;
 
-// ------------------------
-// REGEX PATTERNS FOR LEAKING DATA
-// ------------------------
+/* ----------------------
+   REGEX RULES
+-------------------------*/
 const PHONE_RE = /\b(\+?\d{1,2}[-.\s]?)?(\(?\d{3}\)?[-.\s]?)\d{3}[-.\s]?\d{4}\b/;
 const EMAIL_RE = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i;
 const ADDRESS_WORDS = [
-  "street", "st.", "st ", "avenue", "ave", "road", "rd", "drive", "dr",
-  "lane", "ln", "blvd", "boulevard", "way", "court", "ct"
+  "street","st.","st ","avenue","ave","road","rd","drive","dr",
+  "lane","ln","blvd","boulevard","way","court","ct"
 ];
 
-// ------------------------
-// ANALYZE TEXT FOR LEAKS
-// ------------------------
+/* ----------------------
+   ANALYZE TEXT
+-------------------------*/
 function analyzeText(text) {
   const findings = [];
   let score = 0;
 
-  if (!text || text.trim() === "") return { findings, score };
+  if (!text?.trim()) return { findings, score };
 
   if (PHONE_RE.test(text)) {
-    findings.push({ type: "PHONE", value: text.match(PHONE_RE)[0] });
+    findings.push({ type: "PHONE" });
     score += 4;
   }
+
   if (EMAIL_RE.test(text)) {
-    findings.push({ type: "EMAIL", value: text.match(EMAIL_RE)[0] });
+    findings.push({ type: "EMAIL" });
     score += 4;
   }
-  if (ADDRESS_WORDS.some(w => text.toLowerCase().includes(w))) {
-    findings.push({ type: "ADDRESS", value: "Possible address found" });
+
+  if (ADDRESS_WORDS.some((w) => text.toLowerCase().includes(w))) {
+    findings.push({ type: "ADDRESS" });
     score += 3;
   }
 
   return { findings, score };
 }
 
-// ------------------------
-// HELPER FUNCTIONS
-// ------------------------
+/* ----------------------
+   HELPERS
+-------------------------*/
 async function unzipFile(zipPath, extractTo) {
   await fs.createReadStream(zipPath)
     .pipe(unzipper.Extract({ path: extractTo }))
@@ -69,7 +79,7 @@ function readJSON(filePath) {
 function readHTML(filePath) {
   const raw = fs.readFileSync(filePath, "utf8");
   const matches = raw.match(/>([^<]{5,})</g) || [];
-  return matches.map(m => m.replace(/[><]/g, "").trim());
+  return matches.map((m) => m.replace(/[><]/g, "").trim());
 }
 
 function readCSV(filePath) {
@@ -83,66 +93,63 @@ function scanDirectory(dir) {
 
   for (const entry of entries) {
     const fullPath = path.join(dir, entry.name);
+    const ext = path.extname(entry.name).toLowerCase();
 
     if (entry.isDirectory()) {
       all_text.push(...scanDirectory(fullPath));
       continue;
     }
 
-    const ext = path.extname(entry.name).toLowerCase();
-
     if (ext === ".json") {
       const data = readJSON(fullPath);
       if (!data) continue;
 
-      const items = Array.isArray(data) ? data : data.items || data.ig_followers || [];
+      const items = Array.isArray(data)
+        ? data
+        : data.items || data.ig_followers || [];
+
       for (const item of items) {
         const text = [
           item.text,
           item.caption,
           item.title,
           item.message,
-          item.string_list_data?.map(x => x.value).join(" ")
+          item.string_list_data?.map((x) => x.value).join(" "),
         ]
           .filter(Boolean)
           .join(" ");
 
-        if (text.length > 0) all_text.push(text);
+        if (text) all_text.push(text);
       }
     }
 
-    if (ext === ".html") {
-      all_text.push(...readHTML(fullPath));
-    }
+    if (ext === ".html") all_text.push(...readHTML(fullPath));
 
     if (ext === ".csv") {
       const rows = readCSV(fullPath);
-      for (const r of rows) {
-        const text = Object.values(r).join(" ");
-        all_text.push(text);
-      }
+      rows.forEach((r) => all_text.push(Object.values(r).join(" ")));
     }
   }
 
   return all_text;
 }
 
-// ------------------------
-// UPLOAD /SCAN ENDPOINT
-// ------------------------
+/* ----------------------
+   /scan ENDPOINT
+-------------------------*/
 app.post("/scan", async (req, res) => {
   try {
-    if (!req.files || !req.files.file)
+    if (!req.files?.file)
       return res.status(400).json({ error: "No file uploaded" });
 
     const file = req.files.file;
     if (!file.name.endsWith(".zip"))
       return res.status(400).json({ error: "Upload a ZIP file" });
 
-    const UPLOAD_DIR = path.join(__dirname, "uploads");
-    fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+    const uploadDir = path.join(__dirname, "uploads");
+    fs.mkdirSync(uploadDir, { recursive: true });
 
-    const zipPath = path.join(UPLOAD_DIR, `${Date.now()}-${file.name}`);
+    const zipPath = path.join(uploadDir, `${Date.now()}-${file.name}`);
     fs.writeFileSync(zipPath, file.data);
 
     const extractDir = path.join(__dirname, "extracted", `ig-${Date.now()}`);
@@ -152,7 +159,7 @@ app.post("/scan", async (req, res) => {
 
     const all_text = scanDirectory(extractDir);
 
-    const results = all_text.map(t => {
+    const results = all_text.map((t) => {
       const analysis = analyzeText(t);
       return {
         snippet: t.substring(0, 120),
@@ -163,29 +170,30 @@ app.post("/scan", async (req, res) => {
 
     const summary = {
       total_items_scanned: results.length,
-      high_risk_items: results.filter(r => r.score >= 4).length,
+      high_risk_items: results.filter((r) => r.score >= 4).length,
     };
 
     res.json({ summary, results });
-
   } catch (err) {
-    console.error(err);
     res.status(500).json({ error: err.message });
   }
 });
 
-// ------------------------
-// SERVE REACT FRONTEND
-// ------------------------
-app.use(express.static(path.join(__dirname, "../frontend/build")));
+/* ----------------------
+   Serve React build (Render)
+-------------------------*/
+const frontend = path.join(__dirname, "../frontend/build");
 
-app.get("*", (req, res) => {
-  res.sendFile(path.join(__dirname, "../frontend/build", "index.html"));
-});
+if (fs.existsSync(frontend)) {
+  app.use(express.static(frontend));
+  app.get("*", (req, res) =>
+    res.sendFile(path.join(frontend, "index.html"))
+  );
+}
 
-// ------------------------
-// START SERVER
-// ------------------------
-app.listen(PORT, () => {
-  console.log(`Backend running at http://localhost:${PORT}`);
-});
+/* ----------------------
+   START SERVER
+-------------------------*/
+app.listen(PORT, () =>
+  console.log(`Backend running at http://localhost:${PORT}`)
+);
