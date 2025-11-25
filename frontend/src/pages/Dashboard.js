@@ -109,7 +109,11 @@ export default function Dashboard() {
       });
 
       const report = {
-        summary: data.summary,
+        scope: "Instagram Export ZIP",
+        generatedAt: new Date().toISOString(),
+        summary: data.summary,     // <-- IMPORTANT
+        findings: flatFindings,
+        results: data.results,summary: data.summary,
         results,
         findings: flatFindings,
       };
