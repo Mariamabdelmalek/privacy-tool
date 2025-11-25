@@ -10,7 +10,7 @@ export default function Reports() {
   const navigate = useNavigate();
 
   const report = state?.report;
-
+  
   if (!report) {
     return (
       <main style={{ padding: 20 }}>
@@ -25,44 +25,40 @@ export default function Reports() {
       PDF DOWNLOAD FUNCTION
   ------------------------------ */
   const downloadPDF = () => {
-    try {
-      const doc = new jsPDF();
-      doc.setFontSize(18);
-      doc.text("Social Media Privacy Report", 14, 20);
+  try {
+    const doc = new jsPDF();
+    doc.setFontSize(18);
+    doc.text("Social Media Privacy Report", 14, 20);
 
-      // Safeguard summary
-      const summary = report.summary || {
-        total_items_scanned: report.results?.length || 0,
-        high_risk_items:
-          report.results?.filter((r) => r.score >= 4).length || 0,
-      };
+    const summary = report.summary;
 
-      doc.setFontSize(12);
-      doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 30);
-      doc.text(`Total Items: ${summary.total_items_scanned}`, 14, 40);
-      doc.text(`High Risk Items: ${summary.high_risk_items}`, 14, 50);
+    doc.setFontSize(12);
+    doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 30);
+    doc.text(`Total Items: ${summary.total_items_scanned}`, 14, 40);
+    doc.text(`High Risk Items: ${summary.high_risk_items}`, 14, 50);
 
-      const tableRows = report.results.map((r, i) => [
-        i + 1,
-        r.snippet,
-        r.score,
-        r.findings.map((f) => f.type).join(", ") || "None",
-      ]);
+    const tableRows = report.results.map((r, i) => [
+      i + 1,
+      r.snippet,
+      r.score,
+      r.findings.map((f) => f.type).join(", ") || "None",
+    ]);
 
-      doc.autoTable({
-        startY: 60,
-        head: [["#", "Text Snippet", "Risk Score", "Findings"]],
-        body: tableRows,
-        styles: { fontSize: 8 },
-        headStyles: { fillColor: [52, 73, 94] },
-      });
+    doc.autoTable({
+      startY: 60,
+      head: [["#", "Text Snippet", "Risk Score", "Findings"]],
+      body: tableRows,
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [52, 73, 94] },
+    });
 
-      doc.save(`privacy-report-${Date.now()}.pdf`);
-    } catch (err) {
-      console.error("PDF ERROR:", err);
-      alert("PDF generation failed — check console.");
-    }
-  };
+    doc.save(`privacy-report-${Date.now()}.pdf`);
+  } catch (err) {
+    console.error("PDF ERROR:", err);
+    alert("PDF generation failed — check console.");
+  }
+};
+
 
   /* ------------------------------
       PIE CHART DATA
