@@ -163,6 +163,7 @@ app.post("/scan", async (req, res) => {
       const analysis = analyzeText(t);
       return {
         snippet: t.substring(0, 120),
+         fullText: t,
         findings: analysis.findings,
         score: analysis.score,
       };

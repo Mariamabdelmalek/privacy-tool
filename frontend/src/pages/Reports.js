@@ -2,7 +2,7 @@
 import React from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import jsPDF from "jspdf";
-import "jspdf-autotable";
+import autoTable from "jspdf-autotable";
 import { PieChart, Pie, Cell, Tooltip, Legend } from "recharts";
 
 export default function Reports() {
@@ -27,6 +27,7 @@ export default function Reports() {
   const downloadPDF = () => {
   try {
     const doc = new jsPDF();
+
     doc.setFontSize(18);
     doc.text("Social Media Privacy Report", 14, 20);
 
@@ -44,7 +45,7 @@ export default function Reports() {
       r.findings.map((f) => f.type).join(", ") || "None",
     ]);
 
-    doc.autoTable({
+    autoTable(doc,{
       startY: 60,
       head: [["#", "Text Snippet", "Risk Score", "Findings"]],
       body: tableRows,
@@ -55,7 +56,7 @@ export default function Reports() {
     doc.save(`privacy-report-${Date.now()}.pdf`);
   } catch (err) {
     console.error("PDF ERROR:", err);
-    alert("PDF generation failed — check console.");
+    
   }
 };
 
